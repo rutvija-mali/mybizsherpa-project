@@ -5,10 +5,13 @@ import os
 from dotenv import load_dotenv
 
 from routers import transcripts, linkedin
+import sys
+
 
 load_dotenv()
 app = FastAPI(title="AI Workflow API", version="1.0.0")
 print("GROQ_API_KEY:", os.getenv("GROQ_API_KEY"))
+print("Python version:", sys.version)
 
 # CORS middleware
 app.add_middleware(
