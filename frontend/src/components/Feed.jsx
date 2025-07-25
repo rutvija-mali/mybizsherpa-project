@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 
 export default function Feed() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [queueStats, setQueueStats] = useState(null)
+  const [showQueueStats, setShowQueueStats] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -29,7 +32,7 @@ export default function Feed() {
           content: t.transcript_text.substring(0, 150) + '...',
           result: t.insight_result,
           created_at: t.created_at,
-          status: t.insight_result ? 'completed' : 'processing'
+          status: t.status || (t.insight_result ? 'completed' : 'processing')
         })),
         ...linkedinInsights.map((l) => ({
           id: l.id,
@@ -39,7 +42,7 @@ export default function Feed() {
           content: l.linkedin_bio.substring(0, 150) + '...',
           result: l.icebreaker_result,
           created_at: l.created_at,
-          status: l.icebreaker_result ? 'completed' : 'processing'
+          status: l.status || (l.icebreaker_result ? 'completed' : 'processing')
         }))
       ]
 
@@ -53,18 +56,60 @@ export default function Feed() {
     }
   }
 
+  const fetchQueueStats = async () => {
+    try {
+      const stats = await api.getQueueStats()
+      setQueueStats(stats)
+    } catch (error) {
+      console.error('Error fetching queue stats:', error)
+    }
+  }
+
   useEffect(() => {
     fetchData()
   }, [])
 
   // Auto-refresh every 30 seconds to check for processing completion
   useEffect(() => {
-    const hasProcessingItems = items.some(item => item.status === 'processing')
+    const hasProcessingItems = items.some(item => 
+      item.status === 'processing' || item.status === 'pending'
+    )
+    
     if (hasProcessingItems) {
-      const interval = setInterval(fetchData, 30000) // 30 seconds
+      const interval = setInterval(() => {
+        fetchData()
+        if (showQueueStats) {
+          fetchQueueStats()
+        }
+      }, 15000) // Reduced to 15 seconds for better UX
       return () => clearInterval(interval)
     }
-  }, [items])
+  }, [items, showQueueStats])
+
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      'completed': { variant: 'default', color: 'bg-green-100 text-green-800', label: '✅ Completed' },
+      'processing': { variant: 'destructive', color: 'bg-yellow-100 text-yellow-800', label: '⏳ Processing' },
+      'pending': { variant: 'destructive', color: 'bg-blue-100 text-blue-800', label: '📋 Queued' },
+      'failed': { variant: 'destructive', color: 'bg-red-100 text-red-800', label: '❌ Failed' }
+    }
+    
+    const config = statusConfig[status] || statusConfig['pending']
+    return (
+      <Badge className={config.color}>
+        {config.label}
+      </Badge>
+    )
+  }
+
+  const getProcessingMessage = (status) => {
+    const messages = {
+      'pending': 'Your request is queued and will be processed shortly...',
+      'processing': 'AI is analyzing your content. This may take a few moments...',
+      'failed': 'Processing failed. Please try resubmitting or contact support.'
+    }
+    return messages[status] || 'Processing...'
+  }
 
   if (loading && items.length === 0) {
     return (
@@ -93,12 +138,69 @@ export default function Feed() {
     )
   }
 
+  const processingCount = items.filter(item => 
+    item.status === 'processing' || item.status === 'pending'
+  ).length
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Recent Insights</h2>
-        <Badge variant="outline">{items.length} total</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{items.length} total</Badge>
+          {processingCount > 0 && (
+            <Badge className="bg-yellow-100 text-yellow-800">
+              {processingCount} processing
+            </Badge>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowQueueStats(!showQueueStats)
+              if (!showQueueStats) fetchQueueStats()
+            }}
+          >
+            {showQueueStats ? 'Hide' : 'Show'} Queue Stats
+          </Button>
+        </div>
       </div>
+
+      {showQueueStats && queueStats && (
+        <Card className="bg-gray-50">
+          <CardHeader>
+            <CardTitle className="text-lg">Queue Statistics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="text-center">
+                <div className="font-bold text-xl text-blue-600">
+                  {queueStats.active_tasks}
+                </div>
+                <div className="text-gray-600">Active Tasks</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-xl text-yellow-600">
+                  {queueStats.scheduled_tasks}
+                </div>
+                <div className="text-gray-600">Scheduled</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-xl text-purple-600">
+                  {queueStats.reserved_tasks}
+                </div>
+                <div className="text-gray-600">Reserved</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-xl text-green-600">
+                  {queueStats.workers_online}
+                </div>
+                <div className="text-gray-600">Workers Online</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       
       {items.map((item) => (
         <Card key={item.id} className="transition-shadow hover:shadow-md">
@@ -109,9 +211,7 @@ export default function Feed() {
                   <Badge variant={item.type === 'transcript' ? 'default' : 'secondary'}>
                     {item.type === 'transcript' ? '📞' : '💼'} {item.type}
                   </Badge>
-                  <Badge variant={item.status === 'completed' ? 'outline' : 'destructive'}>
-                    {item.status}
-                  </Badge>
+                  {getStatusBadge(item.status)}
                 </div>
                 <h3 className="font-semibold">{item.title}</h3>
                 {item.subtitle && (
@@ -140,9 +240,17 @@ export default function Feed() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2 text-sm text-amber-600 bg-amber-50 p-3 rounded">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
-                  <span>Processing analysis... This may take a few moments.</span>
+                <div className={`flex items-center space-x-2 text-sm p-3 rounded ${
+                  item.status === 'failed' 
+                    ? 'text-red-600 bg-red-50' 
+                    : item.status === 'pending'
+                    ? 'text-blue-600 bg-blue-50'
+                    : 'text-amber-600 bg-amber-50'
+                }`}>
+                  {item.status !== 'failed' && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                  )}
+                  <span>{getProcessingMessage(item.status)}</span>
                 </div>
               )}
             </div>

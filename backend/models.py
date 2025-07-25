@@ -15,6 +15,7 @@ class TranscriptResponse(BaseModel):
     date: date
     transcript_text: str
     insight_result: Optional[str] = None
+    status: Optional[str] = "pending"  # New field
     created_at: str
 
 class LinkedInInput(BaseModel):
@@ -28,4 +29,18 @@ class LinkedInResponse(BaseModel):
     company_website: Optional[str] = None
     pitch_deck_content: str
     icebreaker_result: Optional[str] = None
+    status: Optional[str] = "pending"  # New field
     created_at: str
+
+# New models for queue responses
+class QueueResponse(BaseModel):
+    id: str
+    task_id: str
+    status: str
+    message: str
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    result: Optional[dict] = None
+    info: Optional[str] = None
