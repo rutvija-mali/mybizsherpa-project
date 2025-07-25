@@ -9,7 +9,12 @@ celery_app = Celery(
     "ai_workflow",
     broker=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
     backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"),
-    include=["celery_worker"]
+    include=["celery_worker"],
+    broker_connection_retry_on_startup=True,
+    broker_connection_max_retries=3,
+    broker_heartbeat=10,
+    broker_pool_limit=1,
+    redis_socket_keepalive=True,
 )
 
 # Windows-friendly Celery configuration
